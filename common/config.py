@@ -1,3 +1,5 @@
 DATA_PATH = "input"
-DB_PATH = "vector_db"
+DB_PATH = "vector_db_n"
+# MODEL_NAME = "microsoft/Phi-3-mini-4k-instruct"
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 MODEL_NAME = "llama3.2:3b"

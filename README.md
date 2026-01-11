@@ -2,6 +2,8 @@
 
 Your local RAG system is set up! Here is how to use it.
 
+setup venv and install requirements.txt or add in local
+
 ## 1. Add Resumes
 Place your PDF resume files into the `input` folder.
 - `c:\Users\athul\OneDrive\Desktop\projects\python\rag\input`

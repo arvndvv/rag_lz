@@ -1,10 +1,14 @@
 import argparse
 import sys
 from langchain_chroma import Chroma
-from langchain_ollama import OllamaEmbeddings
-from langchain_ollama import ChatOllama
+from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings, HuggingFacePipeline, ChatHuggingFace
 from langchain_core.prompts import ChatPromptTemplate
-from config import DATA_PATH, DB_PATH, MODEL_NAME
+from config import DATA_PATH, DB_PATH, MODEL_NAME, EMBEDDING_MODEL_NAME
+import torch
+# from langchain_ollama import OllamaEmbeddings
+from langchain_ollama import ChatOllama
+
 
 
 
@@ -19,7 +23,8 @@ Question: {question}
 """
 
 def query_rag(query_text):
-    embedding_function = OllamaEmbeddings(model=MODEL_NAME)
+    # embedding_function = OllamaEmbeddings(model=MODEL_NAME)
+    embedding_function = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
     
     try:
         db = Chroma(persist_directory=DB_PATH, embedding_function=embedding_function)
@@ -41,8 +46,26 @@ def query_rag(query_text):
     prompt = prompt_template.format(context=context_text, question=query_text)
 
     print(f"\nGeneratin answer using {MODEL_NAME}...\n")
+    
+    device = 0 if torch.cuda.is_available() else -1
+    print(f"Using device: {'GPU' if device == 0 else 'CPU'}")
+
+    # llm = HuggingFacePipeline.from_model_id(
+    #     model_id=MODEL_NAME,
+    #     task="text-generation",
+    #     pipeline_kwargs={
+    #         "max_new_tokens": 512,
+    #         "do_sample": True,
+    #         "temperature": 0.1,
+    #     },
+    #     device=device,
+    # )
+    
+    # chat_model = ChatHuggingFace(llm=llm)
+    # response_text = chat_model.invoke(prompt)
     model = ChatOllama(model=MODEL_NAME)
     response_text = model.invoke(prompt)
+
 
     print("Response:")
     print(response_text.content)
@@ -57,7 +80,7 @@ def main():
     #     return
         
     # query_text = sys.argv[1]
-    query_text="What is the best candidate for backend role?"
+    query_text="I want a a developer who can build a ios app"
     query_rag(query_text)
 
 if __name__ == "__main__":

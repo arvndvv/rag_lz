@@ -1,4 +1,9 @@
 langchain-community
-langchain-ollama
+langchain-huggingface
 langchain-chroma
 pypdf
+transformers
+torch
+sentence-transformers
+accelerate
+bitsandbytes

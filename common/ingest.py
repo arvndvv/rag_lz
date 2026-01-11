@@ -2,9 +2,9 @@ import os
 import shutil
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_ollama import OllamaEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
-from config import DATA_PATH, DB_PATH, MODEL_NAME
+from config import DATA_PATH, DB_PATH, EMBEDDING_MODEL_NAME
 
 def create_vector_db():
     if not os.path.exists(DATA_PATH):
@@ -26,7 +26,8 @@ def create_vector_db():
     print(f"Processing {len(chunks)} chunks...")
     
     # Initialize Embedding Model
-    embeddings = OllamaEmbeddings(model=MODEL_NAME)
+    # Initialize Embedding Model
+    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
 
     # Clean existing DB to start fresh (optional, but good for testing)
     if os.path.exists(DB_PATH):
