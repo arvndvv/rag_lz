@@ -1,7 +1,7 @@
 import os
 
 DATA_PATH = "input"
-DB_PATH = "vector_db_n"
+DB_PATH = "vector_db_at"
 # MODEL_NAME = "microsoft/Phi-3-mini-4k-instruct"
 
 # Check if fine-tuned model exists, otherwise use base model
