@@ -1,86 +1,43 @@
-import argparse
-import sys
-from langchain_chroma import Chroma
-from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings, HuggingFacePipeline, ChatHuggingFace
-from langchain_core.prompts import ChatPromptTemplate
-from config import DATA_PATH, DB_PATH, MODEL_NAME, EMBEDDING_MODEL_NAME
-import torch
-# from langchain_ollama import OllamaEmbeddings
-from langchain_ollama import ChatOllama
-
-
-
-
-PROMPT_TEMPLATE = """
-Answer the question based only on the following context:
-
-{context}
-
----
-
-Question: {question}
-"""
+from functions.query_utils import (
+    load_bm25_chunks,
+    get_bm25_results,
+    get_vector_results,
+    merge_and_deduplicate,
+    rerank_documents,
+    generate_answer
+)
 
 def query_rag(query_text):
-    # embedding_function = OllamaEmbeddings(model=MODEL_NAME)
-    embedding_function = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
+    """Main RAG pipeline."""
+    # 1. BM25 Retrieval
+    chunks = load_bm25_chunks()
+    if chunks is None: return
+    bm25_docs = get_bm25_results(chunks, query_text)
     
-    try:
-        db = Chroma(persist_directory=DB_PATH, embedding_function=embedding_function)
-    except Exception as e:
-        print(f"Error loading vector store: {e}")
-        print("Did you run ingest.py first?")
+    # 2. Vector Retrieval
+    vector_docs = get_vector_results(query_text)
+    
+    # 3. Merge & Deduplicate
+    merged_docs = merge_and_deduplicate(bm25_docs, vector_docs)
+    
+    if not merged_docs:
+        print("No relevant documents found.")
         return
 
-    # Search for relevant documents
-    results = db.similarity_search_with_score(query_text, k=3)
+    # 4. Rerank
+    top_docs = rerank_documents(query_text, merged_docs)
     
-    if not results:
-        print("No relevant context found.")
-        return
-
-    context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
+    # 5. Generate Answer
+    answer = generate_answer(query_text, top_docs)
     
-    prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
-    prompt = prompt_template.format(context=context_text, question=query_text)
-
-    print(f"\nGeneratin answer using {MODEL_NAME}...\n")
-    
-    device = 0 if torch.cuda.is_available() else -1
-    print(f"Using device: {'GPU' if device == 0 else 'CPU'}")
-
-    # llm = HuggingFacePipeline.from_model_id(
-    #     model_id=MODEL_NAME,
-    #     task="text-generation",
-    #     pipeline_kwargs={
-    #         "max_new_tokens": 512,
-    #         "do_sample": True,
-    #         "temperature": 0.1,
-    #     },
-    #     device=device,
-    # )
-    
-    # chat_model = ChatHuggingFace(llm=llm)
-    # response_text = chat_model.invoke(prompt)
-    model = ChatOllama(model=MODEL_NAME)
-    response_text = model.invoke(prompt)
-
-
     print("Response:")
-    print(response_text.content)
-    
+    print(answer)
     print("\nSources:")
-    for doc, _score in results:
+    for doc in top_docs:
         print(f"- {doc.metadata.get('source', 'Unknown')}")
 
 def main():
-    # if len(sys.argv) < 2:
-    #     print("Usage: python query.py \"Your question here\"")
-    #     return
-        
-    # query_text = sys.argv[1]
-    query_text="give me the devolpers from kannur"
+    query_text = "Which candidates show an interest in sports or athletic activities in their resumes?"
     query_rag(query_text)
 
 if __name__ == "__main__":

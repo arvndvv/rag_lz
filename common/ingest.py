@@ -1,8 +1,9 @@
 import os
+import pickle
 import shutil
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_ollama import OllamaEmbeddings
 from langchain_chroma import Chroma
 from config import DATA_PATH, DB_PATH, EMBEDDING_MODEL_NAME
 
@@ -12,26 +13,44 @@ def create_vector_db():
         print(f"Directory '{DATA_PATH}' created. Please add PDF resumes there.")
         return
 
+    print("Starting fresh ingestion for nomic-embed-text...")
     print("Loading documents...")
     loader = PyPDFDirectoryLoader(DATA_PATH)
     documents = loader.load()
+    
     if not documents:
         print("No documents found in 'input' folder. Please add some PDF resumes.")
         return
 
+    # Enrich metadata with document info
+    for i, doc in enumerate(documents):
+        doc.metadata["doc_id"] = os.path.basename(doc.metadata.get("source", f"doc_{i}"))
+
     print("Splitting text...")
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     chunks = text_splitter.split_documents(documents)
+    
+    # Add chunk IDs for tracking
+    for i, chunk in enumerate(chunks):
+        chunk.metadata["chunk_id"] = f"{chunk.metadata.get('doc_id', 'unknown')}_ch_{i}"
 
     print(f"Processing {len(chunks)} chunks...")
     
-    # Initialize Embedding Model
-    # Initialize Embedding Model
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
-
-    # Clean existing DB to start fresh (optional, but good for testing)
+    # Clean existing DB to start fresh (BEFORE saving chunks)
     if os.path.exists(DB_PATH):
         shutil.rmtree(DB_PATH)
+    
+    # Create DB directory
+    os.makedirs(DB_PATH, exist_ok=True)
+    
+    # Save chunks for BM25 (AFTER creating directory)
+    CHUNKS_FILE = os.path.join(DB_PATH, "chunks.pkl")
+    with open(CHUNKS_FILE, "wb") as f:
+        pickle.dump(chunks, f)
+    print(f"Saved {len(chunks)} chunks to {CHUNKS_FILE}")
+    
+    # Initialize Embedding Model
+    embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL_NAME)
 
     print("Creating vector store...")
     Chroma.from_documents(
@@ -39,7 +58,7 @@ def create_vector_db():
         embedding=embeddings, 
         persist_directory=DB_PATH
     )
-    print("Vector store created successfully in 'vector_db'.")
+    print(f"Vector store created successfully in '{DB_PATH}'.")
 
 if __name__ == "__main__":
     create_vector_db()

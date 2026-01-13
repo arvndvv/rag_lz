@@ -3,6 +3,7 @@ import os
 DATA_PATH = "input"
 DB_PATH = "vector_db_at"
 # MODEL_NAME = "microsoft/Phi-3-mini-4k-instruct"
+EMBEDDING_MODELS=["llama3.2:3b","nomic-embed-text"]
 
 # Check if fine-tuned model exists, otherwise use base model
 FINE_TUNED_MODEL_PATH = "fine_tuned_model"
