@@ -11,3 +11,7 @@ sentence-transformers
 accelerate
 bitsandbytes
 rank-bm25
+docling
+markitdown[pdf]
+google-genai
+python-dotenv

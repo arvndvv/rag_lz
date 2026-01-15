@@ -6,7 +6,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.retrievers import BM25Retriever
 from sentence_transformers import CrossEncoder
 # Assumes 'common' is in sys.path when running query.py
-from config import DATA_PATH, DB_PATH, EMBEDDING_MODEL_NAME, MODEL_NAME
+from config import DATA_PATH, DB_PATH, EMBEDDING_MODEL_NAME, MODEL_NAME,COLLECTION_NAME
 
 CHUNKS_FILE = os.path.join(DB_PATH, "chunks.pkl")
 
@@ -42,7 +42,7 @@ def get_bm25_results(chunks, query_text):
 def get_vector_results(query_text):
     """Retrieves documents using vector similarity."""
     embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL_NAME)
-    db = Chroma(persist_directory=DB_PATH, embedding_function=embeddings)
+    db = Chroma(persist_directory=DB_PATH, embedding_function=embeddings, collection_name=COLLECTION_NAME)
     results = db.similarity_search_with_score(query_text, k=10)
     # Filter by score
     return [doc for doc, score in results if score > 0.75]

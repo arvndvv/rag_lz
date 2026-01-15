@@ -4,3 +4,5 @@ input/
 vector_db/
 vector_db_n/
 vector_db_at/
+.env
+processed/

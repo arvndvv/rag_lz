@@ -1,64 +1,50 @@
 import os
-import pickle
-import shutil
-from langchain_community.document_loaders import PyPDFDirectoryLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_ollama import OllamaEmbeddings
-from langchain_chroma import Chroma
-from config import DATA_PATH, DB_PATH, EMBEDDING_MODEL_NAME
+from config import DATA_PATH, DB_PATH, EMBEDDING_MODEL_NAME, COLLECTION_NAME
+from functions.ingestion_utils import (
+    load_documents,
+    load_documents_with_docling,
+    split_by_headers,
+    generate_chunk_ids,
+    reset_vector_db,
+    save_chunks_for_bm25,
+    create_and_persist_db
+)
 
 def create_vector_db():
+    # 1. Validation
     if not os.path.exists(DATA_PATH):
         os.makedirs(DATA_PATH)
         print(f"Directory '{DATA_PATH}' created. Please add PDF resumes there.")
         return
 
-    print("Starting fresh ingestion for nomic-embed-text...")
-    print("Loading documents...")
-    loader = PyPDFDirectoryLoader(DATA_PATH)
-    documents = loader.load()
-    
+    print("Starting fresh ingestion with Semantic Sectioning...")
+
+    # 2. Loading & Preprocessing
+    # documents = load_documents(DATA_PATH)
+    documents = load_documents_with_docling(DATA_PATH)
     if not documents:
-        print("No documents found in 'input' folder. Please add some PDF resumes.")
         return
 
-    # Enrich metadata with document info
-    for i, doc in enumerate(documents):
-        doc.metadata["doc_id"] = os.path.basename(doc.metadata.get("source", f"doc_{i}"))
 
-    print("Splitting text...")
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    chunks = text_splitter.split_documents(documents)
-    
-    # Add chunk IDs for tracking
-    for i, chunk in enumerate(chunks):
-        chunk.metadata["chunk_id"] = f"{chunk.metadata.get('doc_id', 'unknown')}_ch_{i}"
+    # 3. Splitting
+    print("Splitting text by Resume Sections...")
+    chunks = split_by_headers(documents)
+    chunks = generate_chunk_ids(chunks)
+    print(f"Created {len(chunks)} semantic chunks.")
 
-    print(f"Processing {len(chunks)} chunks...")
-    
-    # Clean existing DB to start fresh (BEFORE saving chunks)
-    if os.path.exists(DB_PATH):
-        shutil.rmtree(DB_PATH)
-    
-    # Create DB directory
-    os.makedirs(DB_PATH, exist_ok=True)
-    
-    # Save chunks for BM25 (AFTER creating directory)
-    CHUNKS_FILE = os.path.join(DB_PATH, "chunks.pkl")
-    with open(CHUNKS_FILE, "wb") as f:
-        pickle.dump(chunks, f)
-    print(f"Saved {len(chunks)} chunks to {CHUNKS_FILE}")
-    
-    # Initialize Embedding Model
-    embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL_NAME)
+    # 4. Database Prep
+    reset_vector_db(DB_PATH)
+    save_chunks_for_bm25(chunks, DB_PATH)
 
-    print("Creating vector store...")
-    Chroma.from_documents(
-        documents=chunks, 
-        embedding=embeddings, 
-        persist_directory=DB_PATH
+    # 5. Vector Store Creation
+    create_and_persist_db(
+        chunks=chunks,
+        db_path=DB_PATH,
+        collection_name=COLLECTION_NAME,
+        model_name=EMBEDDING_MODEL_NAME
     )
-    print(f"Vector store created successfully in '{DB_PATH}'.")
 
+print()
 if __name__ == "__main__":
+    print("Starting ingestion process...")
     create_vector_db()

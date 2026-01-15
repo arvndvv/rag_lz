@@ -1,6 +1,7 @@
 import streamlit as st
 from langchain_chroma import Chroma
 import json
+from common.config import collections
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -55,22 +56,27 @@ st.markdown("""
 
 # --- Database Connection ---
 @st.cache_resource
-def get_db():
+def get_db(collection_name):
     return Chroma(
-        collection_name="langchain",
+        collection_name=collection_name,
         persist_directory="./vector_db",
         embedding_function=None
     )
 
 def main():
+    # Sidebar - Collection Selection
+    st.sidebar.markdown("## 🗂️ Collection Selector")
+    collection_List = collections
+    selected_collection = st.sidebar.selectbox("Select a Collection", collection_List)
+
     # Header
     col1, col2 = st.columns([3, 1])
     with col1:
         st.title("ChromaDB Explorer")
-        st.markdown("Visualizing your vector database collection **'langchain'**")
+        st.markdown(f"Visualizing your vector database collection **'{selected_collection}'**")
     
     try:
-        db = get_db()
+        db = get_db(selected_collection)
         # Fetch data (increase limit if needed)
         data = db._collection.get(limit=100)
         
