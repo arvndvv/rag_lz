@@ -165,6 +165,62 @@ def load_documents_with_docling(data_path: str,is_markdown: bool = True) -> List
     print(f"Loaded {len(documents)} documents.")
     return documents
 
+def load_documents_with_docling_tesseract(data_path: str, is_markdown: bool = True) -> List[Document]:
+    """Loads PDF documents from the specified directory using Docling with Tesseract OCR."""
+    try:
+        from docling.document_converter import DocumentConverter, PdfFormatOption
+        from docling.datamodel.pipeline_options import PdfPipelineOptions,TesseractCliOcrOptions,TableStructureOptions
+        from docling.datamodel.base_models import InputFormat
+    except ImportError:
+        raise ImportError("Docling is not installed. Please install it using `pip install docling`.")
+
+    print(f"Loading PDFs from '{data_path}' using Docling with Tesseract...")
+    documents = []
+    
+    # Configure Pipeline Options to enforce OCR using Tesseract
+    ocr_options = TesseractCliOcrOptions(lang=["eng"])
+    pipeline_options = PdfPipelineOptions(
+        do_ocr=True, ocr_options=ocr_options
+    )
+    converter = DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+        }
+    )
+
+    if not os.path.exists(data_path):
+        print(f"Directory '{data_path}' does not exist.")
+        return []
+
+    for filename in os.listdir(data_path):
+        file_path = os.path.join(data_path, filename)
+        if os.path.isfile(file_path) and filename.lower().endswith(".pdf"):
+            try:
+                print(f"Converting '{filename}'...")
+                result = converter.convert(file_path)
+                # Export to markdown to preserve structure
+                if is_markdown:
+                    content = result.document.export_to_markdown()
+                    documents.append(Document(
+                        page_content=content,
+                        metadata={"source": file_path}
+                    ))
+                else:
+                    content = result.document.export_to_dict()
+                    documents.append({
+                        "page_content":content,
+                        "metadata":{"source": file_path}
+                    })
+            except Exception as e:
+                print(f"Error converting {filename}: {e}")
+
+    if not documents:
+        print("No documents found.")
+        return []
+    
+    print(f"Loaded {len(documents)} documents.")
+    return documents
+
 def load_documents_with_docling_and_gemini(data_path: str) -> List[Document]:
     """
     Extracts images from PDF documents using Docling, sends them to Gemini for analysis,
@@ -347,80 +403,18 @@ def create_and_persist_db(chunks: List[Document], db_path: str, collection_name:
 # --- Improved Section Extraction (Ported from JS) ---
 
 CV_HEADING_PATTERNS = {
-    "summary": [
-        "summary",
-        "professional summary",
-        "profile",
-        "career summary",
-        "about me",
-        "objective"
-    ],
-    "skills": [
-        "skills",
-        "skills?",
-        "key skills",
-        "technical skills",
-        "professional skills",
-        "core skills",
-        "competencies",
-        "expertise",
-        r"k\s*e\s*y\s*s\s*k\s*i\s*l\s*l\s*s"
-    ],
-    "experience": [
-        "experience",
-        "work experience",
-        "professional experience",
-        "employment history",
-        "career history",
-        "work history"
-    ],
-    "education": [
-        "education",
-        "academic background",
-        "educational qualifications",
-        "qualifications"
-    ],
-    "projects": [
-        "projects",
-        "personal projects",
-        "academic projects",
-        "professional projects"
-    ],
-    "certifications": [
-        "certifications?",
-        "licenses?",
-        "certified courses"
-    ],
-    "achievements": [
-        "achievements?",
-        "accomplishments?",
-        "awards?",
-        "honors?"
-    ],
-    "interests": [
-        "interests?",
-        "hobbies",
-        "activities",
-        "extracurricular activities"
-    ],
-    "languages": [
-        "languages?",
-        "language proficiency"
-    ],
-    "publications": [
-        "publications?",
-        "research",
-        "papers"
-    ],
-    "references": [
-        "references?",
-        "referees"
-    ],
-    "personal": [
-        "personal details",
-        "personal information",
-        "contact details"
-    ]
+    "summary": ['summary', 'professional summary', 'profile', 'career summary', 'about me', 'objective'],
+    "skills": ['skills', 'key skills', 'technical skills', 'professional skills', 'core skills', 'competencies', 'expertise'],
+    "experience": ['experience', 'work experience', 'professional experience', 'employment history', 'career history', 'work history'],
+    "education": ['education', 'academic background', 'educational qualifications', 'qualifications'],
+    "projects": ['projects', 'personal projects', 'academic projects', 'professional projects'],
+    "certifications": ['certifications', 'licenses', 'certified courses', 'certificates', 'certificate'],
+    "achievements": ['achievements', 'accomplishments', 'awards', 'honors'],
+    "interests": ['interests', 'hobbies', 'activities', 'extracurricular activities'],
+    "languages": ['languages', 'language proficiency'],
+    "publications": ['publications', 'research', 'papers'],
+    "references": ['references', 'referees'],
+    "personal": ['personal details', 'personal information', 'contact details']
 }
 
 def escape_regex(s):
@@ -441,7 +435,8 @@ def build_heading_regex(variants):
         if re.match(r"^[a-zA-Z\s]+$", v):
             patterns.append(spaced_phrase(v))
             
-    pattern_str = f"^\\s*(?:#{{1,6}}\\s*)?(?:{'|'.join(patterns)})\\s*[:\\-]?\\s*$"
+    # pattern_str = f"^\\s*(?:#{{1,6}}\\s*)?(?:{'|'.join(patterns)})\\s*[:\\-]?\\s*$"
+    pattern_str=f"^\\s*(?:#{1,6}\\s*)?[\\*_]*(?:${'|'.join(patterns)})[\\s\\*_\\.\\-:]*$"
     return re.compile(pattern_str, re.IGNORECASE | re.MULTILINE)
 
 def detect_cv_headings(cv_text):
@@ -484,5 +479,18 @@ def extract_sections(cv_text):
 
 
 if __name__ == "__main__":
-    print(extract_sections("data"))
+    # print(extract_sections("data"))
+    cv="""  #### **Professional Summary**
+    A final year B.Tech...
+
+    #### **Education**
+    # **Cochin University...**
+    #### **P R O J E C T S:---**
+    new project
+    # **Experience**
+    # **Project Intern at N-OMS**
+    - Contributed to the N-OMS...
+    """;
+
+    print(detect_cv_headings(cv))
 

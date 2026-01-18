@@ -12,6 +12,7 @@ accelerate
 bitsandbytes
 rank-bm25
 docling
-markitdown[pdf]
+# markitdown[pdf]
 google-genai
 python-dotenv
+pdf2image

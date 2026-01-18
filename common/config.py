@@ -15,5 +15,6 @@ else:
     EMBEDDING_MODEL_NAME = "nomic-embed-text"
 
 MODEL_NAME = "llama3.2:3b"
+PARSER="marker"
 
 COLLECTION_NAME="resume_collection"
