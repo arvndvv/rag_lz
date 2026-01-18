@@ -15,6 +15,12 @@ CV_HEADING_PATTERNS = {
     'personal': ['personal details', 'personal information', 'contact details']
 }
 
+STRUCTURED_SCHEMA={
+    'general': ['name', 'email', 'position'],
+    'skills': ['skills'],
+    'experience': [{"company_name", "start_date", "end_date", "position", "description"}],
+}
+
 def spaced_word(word):
     """
     Converts 'word' to 'w\\s*o\\s*r\\s*d' to match spaced-out text.

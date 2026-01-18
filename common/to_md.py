@@ -7,6 +7,7 @@ from functions.ingestion_utils import (
     load_documents_with_docling_tesseract
 )
 from functions.marker_utils import load_documents_with_marker
+from config import MODEL_NAME,PARSER
 
 is_markdown = True
 should_owerwrite=False
@@ -15,13 +16,15 @@ extension="md" if is_markdown else "json"
 def skip_condition_func(file_name):
     if should_owerwrite:
         return False
-    output_path = os.path.join("processed",folder_to_save, file_name + "."+extension)
+    output_path = os.path.join("processed",folder_to_save,PARSER, file_name + "."+extension)
 
     return os.path.exists(output_path)
 
 def makeMd():
-    # documents = load_documents_with_docling(DATA_PATH,is_markdown)
-    documents = load_documents_with_marker(DATA_PATH,is_markdown,skip_condition_func)
+    if PARSER=="marker":
+        documents = load_documents_with_marker(DATA_PATH,is_markdown,skip_condition_func)
+    else:
+        documents = load_documents_with_docling(DATA_PATH,is_markdown)
     if not os.path.exists("processed"):
         os.makedirs("processed")
 
@@ -29,7 +32,7 @@ def makeMd():
         for doc in documents:
             # Using Docling's markdown output (stored in page_content)
             file_name = os.path.basename(doc.metadata["source"]) if is_markdown else os.path.basename(doc["metadata"]["source"])
-            output_path = os.path.join("processed",folder_to_save, file_name + "."+extension)
+            output_path = os.path.join("processed",folder_to_save,PARSER, file_name + "."+extension)
             with open(output_path, 'w', encoding='utf-8') as f:
                 if is_markdown:
                     f.write(doc.page_content)
@@ -38,7 +41,7 @@ def makeMd():
                     f.write(json.dumps(doc["page_content"]))
     except Exception as e:
         print("is_markdown ",is_markdown, "is it correct")
-        print(f"Error converting {filename}: {e}")
+        print(f"Error converting {file_name}: {e}")
         print("is_markdown ",is_markdown, "is it correct")
 
 if __name__ == "__main__":

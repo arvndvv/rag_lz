@@ -1,0 +1,54 @@
+[
+    {
+        "question": "who can develop android app",
+        "section": {
+            "sections": [
+                "skills",
+                "experience"
+            ],
+            "confidence": "high",
+            "reason": "The user is looking for a developer with expertise in Android app development, which falls under the 'skills' section. Additionally, they are also interested in finding someone who has experience working on Android projects, which can be found in the 'experience' section."
+        }
+    },
+    {
+        "question": "who is intrested in sports",
+        "section": {
+            "sections": [
+                "interests"
+            ],
+            "confidence": "high",
+            "reason": "The user's interest in sports directly relates to their profile, and the 'interests' section is a common place to mention hobbies or extracurricular activities."
+        }
+    },
+    {
+        "question": "who can play football",
+        "section": {
+            "sections": [
+                "interests"
+            ],
+            "confidence": "low",
+            "reason": "The 'interests' section may contain information about sports, including football. However, it's unlikely to be the most relevant section as it's too general and may include other interests that aren't related to football."
+        }
+    },
+    {
+        "question": "who worked on lambdazen",
+        "section": {
+            "sections": [
+                "projects"
+            ],
+            "confidence": "high",
+            "reason": "The 'projects' section is likely to contain information about the user's experience with Lambdazen, as it typically lists projects where the user has worked on a product."
+        }
+    },
+    {
+        "question": "any android developer who is intrested in sports",
+        "section": {
+            "sections": [
+                "experience",
+                "interests"
+            ],
+            "confidence": "medium",
+            "reason": "The user asked for an Android developer with a focus on sports, suggesting they want to highlight relevant work experience and personal interests."
+        }
+    }
+]

@@ -16,3 +16,4 @@ docling
 google-genai
 python-dotenv
 pdf2image
+sqlite-web

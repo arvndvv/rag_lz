@@ -24,3 +24,8 @@ venv\Scripts\python query.py "What is the best candidate for backend role?"
 ## Tips
 - Ensure you have the `llama3.2:3b` model running or available in Ollama (`ollama list`).
 - If you add new resumes, run `ingest.py` again.
+
+# to view sql db
+```bash
+sqlite_web db.db
+```

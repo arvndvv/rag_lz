@@ -1,6 +1,8 @@
 import sqlite3
 from sqlite3 import Error
 import logging
+import json
+from contextlib import contextmanager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -124,3 +126,187 @@ def close_connection(conn):
     if conn:
         conn.close()
         logging.info("Database connection closed")
+
+@contextmanager
+def get_db_connection(db_file):
+    """
+    Context manager for database connections.
+    Automatically closes the connection when the block exits.
+    
+    Usage:
+    with get_db_connection(db_file) as conn:
+        # do operations
+    """
+    conn = None
+    try:
+        conn = create_connection(db_file)
+        if conn is None:
+            yield None
+        else:
+            yield conn
+    finally:
+        if conn:
+            close_connection(conn)
+
+def create_resume_tables(conn):
+    """
+    Create the users and experience tables with the required keys.
+    Users table includes general info and skills.
+    Experience table includes experience details linked to users.
+    
+    :param conn: Connection object
+    """
+    users_sql = """
+    CREATE TABLE IF NOT EXISTS users (
+        email TEXT PRIMARY KEY,
+        name TEXT,
+        position TEXT,
+        skills TEXT
+    );
+    """
+    
+    experience_sql = """
+    CREATE TABLE IF NOT EXISTS experience (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_email TEXT NOT NULL,
+        company_name TEXT,
+        start_date TEXT,
+        end_date TEXT,
+        position TEXT,
+        description TEXT,
+        FOREIGN KEY (user_email) REFERENCES users (email)
+    );
+    """
+    
+    create_table(conn, users_sql)
+    create_table(conn, experience_sql)
+
+def insert_resume_data(conn, resume_data):
+    """
+    Insert resume data from a dictionary into users and experience tables.
+    
+    :param conn: Connection object
+    :param resume_data: Dictionary containing resume data
+    """
+    try:
+        general = resume_data.get("general", {})
+        skills = resume_data.get("skills", [])
+        experience = resume_data.get("experience", [])
+        
+        email = general.get("email")
+        if not email:
+            logging.error("Email is mandatory for inserting resume data.")
+            return
+
+        # Insert user
+        # Using INSERT OR REPLACE to update if exists
+        user_sql = """
+        INSERT OR REPLACE INTO users (email, name, position, skills)
+        VALUES (?, ?, ?, ?);
+        """
+        # Convert skills list to JSON string
+        skills_str = json.dumps(skills)
+        
+        user_params = (email, general.get("name"), general.get("position"), skills_str)
+        create_record(conn, user_sql, user_params)
+        
+        # Insert experience
+        # First, delete existing experience for this user
+        delete_record(conn, "DELETE FROM experience WHERE user_email = ?", (email,))
+        
+        # Then insert new entries
+        exp_sql = """
+        INSERT INTO experience (user_email, company_name, start_date, end_date, position, description)
+        VALUES (?, ?, ?, ?, ?, ?);
+        """
+        
+        for exp in experience:
+            exp_params = (
+                email,
+                exp.get("company_name"),
+                exp.get("start_date"),
+                exp.get("end_date"),
+                exp.get("position"),
+                exp.get("description")
+            )
+            create_record(conn, exp_sql, exp_params)
+        
+        logging.info(f"Inserted resume data for user: {email}")
+
+    except Exception as e:
+        logging.error(f"Error inserting resume data: {e}")
+
+def get_data_by_email(conn, email_or_list):
+    """
+    Get user and experience data by email(s).
+    
+    :param conn: Connection object
+    :param email_or_list: Single email string or list of emails
+    :return: List of dictionaries containing user and experience data
+    """
+    if isinstance(email_or_list, str):
+        emails = [email_or_list]
+    else:
+        emails = email_or_list
+        
+    results = []
+    
+    for email in emails:
+        user_sql = "SELECT * FROM users WHERE email = ?"
+        user_rows = read_records(conn, user_sql, (email,))
+        
+        if not user_rows:
+            continue
+            
+        user_data = user_rows[0]
+        # user_data is a tuple (email, name, position, skills)
+        
+        user_dict = {
+            "email": user_data[0],
+            "name": user_data[1],
+            "position": user_data[2],
+            "skills": user_data[3]
+        }
+        
+        try:
+            if user_dict["skills"]:
+                user_dict["skills"] = json.loads(user_dict["skills"])
+        except:
+            pass
+            
+        exp_sql = "SELECT * FROM experience WHERE user_email = ?"
+        exp_rows = read_records(conn, exp_sql, (email,))
+        
+        exp_list = []
+        for row in exp_rows:
+            # row is (id, user_email, company_name, start_date, end_date, position, description)
+            exp_dict = {
+                "company_name": row[2],
+                "start_date": row[3],
+                "end_date": row[4],
+                "position": row[5],
+                "description": row[6]
+            }
+            exp_list.append(exp_dict)
+            
+        results.append({
+            "general": user_dict,
+            "experience": exp_list
+        })
+        
+    return results
+
+def read_db_by_sql(conn, sql, params=None):
+    """
+    Execute a read-only SQL query.
+    
+    :param conn: Connection object
+    :param sql: SELECT statement
+    :param params: tuple of values (optional)
+    :return: list of rows
+    """
+    if not sql.strip().upper().startswith("SELECT"):
+        logging.error("Only SELECT queries are allowed.")
+        return None
+        
+    return read_records(conn, sql, params)

@@ -1,12 +1,16 @@
 import pickle
 import os
+import sys
 from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings, ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.retrievers import BM25Retriever
 from sentence_transformers import CrossEncoder
-# Assumes 'common' is in sys.path when running query.py
-from config import DATA_PATH, DB_PATH, EMBEDDING_MODEL_NAME, MODEL_NAME,COLLECTION_NAME
+# Ensure 'common' directory is in sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import DATA_PATH, DB_PATH, EMBEDDING_MODEL_NAME, MODEL_NAME,COLLECTION_NAME,DB_NAME
+import functions.database_utils as db_utils
+
 
 CHUNKS_FILE = os.path.join(DB_PATH, "chunks.pkl")
 
@@ -39,13 +43,24 @@ def get_bm25_results(chunks, query_text):
     retriever.k = 10
     return retriever.invoke(query_text)
 
-def get_vector_results(query_text):
+def get_vector_results(query_text,section_list=[]):
     """Retrieves documents using vector similarity."""
     embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL_NAME)
     # use NER to get the section
     db = Chroma(persist_directory=DB_PATH, embedding_function=embeddings, collection_name=COLLECTION_NAME)
-    results = db.similarity_search_with_score(query_text, k=10,filter={"section": "interests"})
-    # Filter by score
+    lst=[{"section": x} for x in section_list]
+    filter=None
+    if len(section_list)==1:
+        filter=lst[0]
+    elif len(section_list)>1:
+        filter={
+            "$or": lst
+        }
+    results = db.similarity_search_with_score(
+        query_text,
+        k=10,
+        filter=filter
+    )  
     return [doc for doc, score in results if score > 0.75]
 
 def merge_and_deduplicate(bm25_docs, vector_docs):
@@ -83,12 +98,40 @@ def merge_same_source(docs):
             merge_dict[source] = doc
     return list(merge_dict.values())
 
+
+
+def get_connection():
+    return db_utils.get_db_connection(DB_NAME)
+
+
 def generate_answer(query_text, context_docs):
     """Generates answer using LLM."""
-    context_text = "\n\n---\n\n".join([
-        f"SOURCE: {doc.metadata.get('source', 'Unknown')}\nCONTENT: {doc.page_content}"
-        for doc in context_docs
-    ])
+    context_list = []
+    email_group_content_dict={}
+    for doc in context_docs:
+        # check if email is already in the dictionary
+        if doc.metadata.get("email", "Unknown") in email_group_content_dict:
+            email_group_content_dict[doc.metadata.get("email", "Unknown")].append(doc)
+        else:
+            email_group_content_dict[doc.metadata.get("email", "Unknown")]=[doc]
+
+    with get_connection() as conn:
+        for email in email_group_content_dict:
+            sql_data=db_utils.get_data_by_email(conn,email)
+            result=f"""
+            This is the cv of {sql_data[0]["general"]["name"]}
+            # Personal information
+             Name: {sql_data[0]["general"]["name"]}
+             Email: {sql_data[0]["general"]["email"]}
+            """
+            for doc in email_group_content_dict[email]:
+                result+=f"\n\n# {doc.metadata.get("section", "contents")}\n\n{doc.page_content}"
+            context_list.append(result)
+           
+
+    context_text = "\n\n---\n\n".join(context_list)
+
+   
     
     template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
     prompt = template.format(context=context_text, question=query_text)
@@ -96,5 +139,16 @@ def generate_answer(query_text, context_docs):
     print(f"\nGenerating answer using {MODEL_NAME}...\n")
     model = ChatOllama(model=MODEL_NAME)
     response = model.invoke(prompt)
+    content=response.content
+     #  write to a log file
+    with open("log.txt", "a") as f:
+        f.write(f"Query: {query_text}\n")
+        f.write(f"Context: {context_text}\n")
+        f.write(f"Answer: {content}\n")
     
-    return response.content
+    return content
+
+
+
+if __name__ == "__main__":
+    pass

@@ -9,12 +9,12 @@ collections=["resume_collection","langchain"]
 
 # Check if fine-tuned model exists, otherwise use base model
 FINE_TUNED_MODEL_PATH = "fine_tuned_model"
-if os.path.exists(FINE_TUNED_MODEL_PATH):
-    EMBEDDING_MODEL_NAME = FINE_TUNED_MODEL_PATH
-else:
-    EMBEDDING_MODEL_NAME = "nomic-embed-text"
+
+EMBEDDING_MODEL_NAME = "nomic-embed-text"
 
 MODEL_NAME = "llama3.2:3b"
-PARSER="marker"
+PARSER_LIST=["marker","docling"]
+PARSER=PARSER_LIST[1]
+DB_NAME="db.db"
 
 COLLECTION_NAME="resume_collection"
