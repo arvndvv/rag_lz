@@ -3,7 +3,7 @@ import os
 import logging
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
-
+import io
 # Ensure we can import from common
 # Assuming server directory is at project_root/server
 # We need to add project_root to sys.path
@@ -12,6 +12,9 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 common_dir = os.path.join(project_root, 'common')
 sys.path.append(project_root)
 sys.path.append(common_dir)
+
+import functions.database_utils as db_utils
+from config import DB_NAME
 
 try:
     # We use common.query if we want to be explicit, but since common is in path, 
@@ -69,14 +72,58 @@ def chat():
     
     # We call query_rag. It logs to 'rag_logger', which emits to websocket.
     # It returns the string result.
+    
+    # Capture logs
+    log_capture_string = io.StringIO()
+    ch = logging.StreamHandler(log_capture_string)
+    ch.setLevel(logging.INFO)
+    rag_logger.addHandler(ch)
+    
     try:
-        answer = query_rag(question)
+        answer, context_str = query_rag(question)
+        
+        # Save to DB
+        captured_logs = log_capture_string.getvalue()
+        try:
+            with db_utils.get_db_connection(DB_NAME) as conn:
+                db_utils.save_qa_log(conn, question, answer, captured_logs, context_str)
+        except Exception as db_e:
+            rag_logger.error(f"Error saving to DB: {db_e}")
+
         return jsonify({'response': answer})
     except Exception as e:
         rag_logger.error(f"Error in query_rag: {e}")
         return jsonify({'error': str(e)}), 500
+    finally:
+        rag_logger.removeHandler(ch)
+        log_capture_string.close()
+
+@app.route('/history', methods=['GET'])
+def get_history():
+    try:
+        with db_utils.get_db_connection(DB_NAME) as conn:
+            history = db_utils.get_qa_history(conn)
+        return jsonify(history)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/history/<int:id>', methods=['GET'])
+def get_history_details(id):
+    try:
+        with db_utils.get_db_connection(DB_NAME) as conn:
+            details = db_utils.get_qa_details(conn, id)
+        if details:
+            return jsonify(details)
+        else:
+            return jsonify({'error': 'Not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     print("Starting Flask SocketIO Server...")
+    # Initialize DB tables
+    with db_utils.get_db_connection(DB_NAME) as conn:
+        db_utils.create_qa_tables(conn)
+        
     # Use allow_unsafe_werkzeug=True if needed for dev environment with socketio
-    socketio.run(app, debug=True, port=5000, allow_unsafe_werkzeug=True)
+    socketio.run(app, debug=True, port=5000, allow_unsafe_werkzeug=True, use_reloader=False)

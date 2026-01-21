@@ -48,6 +48,7 @@ def analyze_image_with_gemini(image: Image.Image, prompt: str, model_name: str =
         print(f"Error calling Gemini API for image analysis: {e}")
         return ""
 
+
 def get_gemini_response(prompt: str, model_name: str = "gemini-2.0-flash") -> str:
     """
     Calls the Gemini API with the given prompt.
@@ -75,6 +76,37 @@ def get_gemini_response(prompt: str, model_name: str = "gemini-2.0-flash") -> st
         # Log the error or handle it as appropriate for the application
         print(f"Error calling Gemini API: {e}")
         return ""
+
+def get_gemini_json_response(prompt: str, model_name: str = "gemini-2.0-flash") -> str:
+    """
+    Calls the Gemini API with the given prompt and requests JSON output.
+    
+    Args:
+        prompt (str): The prompt to send to the API.
+        model_name (str): The model to use. Defaults to "gemini-2.0-flash".
+        
+    Returns:
+        str: The JSON text response from the API.
+    """
+    api_key = os.getenv("GEMINI_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_KEY not found in environment variables.")
+    
+    client = genai.Client(api_key=api_key)
+    
+    try:
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config={
+                'response_mime_type': 'application/json'
+            }
+        )
+        return response.text
+    except Exception as e:
+        print(f"Error calling Gemini API (JSON): {e}")
+        return ""
+
 
 
 if __name__ == "__main__":

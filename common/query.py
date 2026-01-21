@@ -11,7 +11,7 @@ from functions.query_utils import (
 from functions.make_section import CV_HEADING_PATTERNS
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
-from config import MODEL_NAME,DB_NAME
+from config import MODEL_NAME,DB_NAME,PARSER,EMBEDDING_MODEL_NAME
 import json
 import functions.database_utils as db_utils
 import logging
@@ -26,6 +26,9 @@ def get_connection():
 def query_rag(query_text):
     """Main RAG pipeline."""
     logger.info(f"Starting RAG query for: {query_text}")
+    logger.info(f"LLM Model: {MODEL_NAME}")
+    logger.info(f"Used PARSER: {PARSER}")
+    logger.info(f"Embedding Model: {EMBEDDING_MODEL_NAME}")
     # 1. BM25 Retrieval
     # chunks = load_bm25_chunks()
     # if chunks is None: return
@@ -56,9 +59,9 @@ def query_rag(query_text):
                     "email":data["general"]["email"],
                 })
     
-    if polished_question=="not related":
+    if polished_question.lower()=="not related":
         logger.info("Question not related to context.")
-        return "I can only answer questions related to the resume/context."
+        return "I can only answer questions related to the resume/context.","no context"
 
     logger.info(f"Polished question: {polished_question}")
     section=get_section_using_llm(polished_question)
@@ -85,14 +88,14 @@ def query_rag(query_text):
     
     if not merged_docs:
         logger.info("No relevant documents found.")
-        return "No relevant documents found."
+        return "No relevant documents found.","no context"
 
     # 4. Rerank
     # top_docs = rerank_documents(query_text, merged_docs)
     top_docs = merged_docs
     
     # 5. Generate Answer
-    answer = generate_answer(query_text, top_docs,section_names)
+    answer,context_text = generate_answer(query_text, top_docs,section_names)
     
     logger.info("Answer generated successfully.")
     
@@ -100,13 +103,13 @@ def query_rag(query_text):
     for doc in top_docs:
         result += f"- {doc.metadata.get('source', 'Unknown')}\n"
     
-    return result
+    return result, context_text
 
 def main():
     # Setup basic logging for CLI usage
     logging.basicConfig(level=logging.INFO)
     query_text = "is athul and nihal interested in sports"
-    response = query_rag(query_text)
+    response, _ = query_rag(query_text)
     print(response)
     
 

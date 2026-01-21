@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,15 +9,20 @@
     <!-- Socket.IO Client -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 </head>
+
 <body>
     <div class="container">
-        <!-- Sidebar for Logs -->
+        <!-- Sidebar for Logs and History -->
         <div class="sidebar">
-            <div class="sidebar-header">
-                <h2>System Logs</h2>
+            <div class="sidebar-tabs">
+                <button id="tab-logs" class="active">Logs</button>
+                <button id="tab-history">History</button>
             </div>
             <div id="log-container" class="log-container">
                 <div class="log-entry system">Waiting for logs...</div>
+            </div>
+            <div id="history-container" class="history-container hidden">
+                <!-- History list -->
             </div>
         </div>
 
@@ -40,4 +46,5 @@
     </div>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
+
 </html>

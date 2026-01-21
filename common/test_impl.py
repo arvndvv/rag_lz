@@ -1,7 +1,4 @@
-from functions.query_utils import (
-    get_section_using_llm,get_sql_using_llm,get_data_using_llm,
-    get_vector_results,polish_question
-)
+
 import functions.database_utils as db_utils
 from config import MODEL_NAME,DB_NAME
 
@@ -20,6 +17,10 @@ QUESTIONS_FOR_LLM=[
     "can athul develop web app"
 ]
 def get_sections():
+    from functions.query_utils import (
+    get_section_using_llm,get_sql_using_llm,get_data_using_llm,
+    get_vector_results,polish_question
+    )
     result=[]
     for ques in QUESTIONS_FOR_LLM:
         section=get_section_using_llm(ques)
@@ -32,6 +33,10 @@ def get_sections():
     print(result)
 
 def get_sql(ques):
+    from functions.query_utils import (
+    get_section_using_llm,get_sql_using_llm,get_data_using_llm,
+    get_vector_results,polish_question
+)
     result=[]
     with get_connection() as conn:
         schema=db_utils.get_schema(conn)
@@ -47,6 +52,10 @@ def query_sql():
 
 
 def query_vector(query_text):
+    from functions.query_utils import (
+    get_section_using_llm,get_sql_using_llm,get_data_using_llm,
+    get_vector_results,polish_question
+)
     section_names=["interest"]
     chunk_ids=["athul9040@gmail.com_interests"]
     results =get_vector_results(query_text,section_names,chunk_ids)
@@ -57,5 +66,11 @@ if __name__ == "__main__":
     # ques="who worked on lambdazen"
     # get_sql(ques)
     # query_vector("is athul and nihal interested in sports")
-    r=polish_question("is athul and nihal interested in sports")
+    from functions.query_utils import (
+     polish_question
+    )
+    print("calling with mode",MODEL_NAME)
+    r=polish_question("hi can athul develop web app")
+    # r=get_data_using_gemini("hi can athul develop web app")
+    get_data_using_gemini("hi can athul develop web app","","")
     print(r)

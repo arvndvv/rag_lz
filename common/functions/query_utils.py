@@ -1,6 +1,7 @@
 import pickle
 import os
 import sys
+import re
 from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings, ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
@@ -10,6 +11,7 @@ from sentence_transformers import CrossEncoder
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import DATA_PATH, DB_PATH, EMBEDDING_MODEL_NAME, MODEL_NAME,COLLECTION_NAME,DB_NAME,SQL_MODEL   
 import functions.database_utils as db_utils
+from functions.gemini_utils import get_gemini_json_response,get_gemini_response
 import json
 
 
@@ -24,7 +26,7 @@ Context:
 
 Question: {question}
 
-Answer (include source filenames as evidence):
+Answer:
 """
 
 def load_bm25_chunks():
@@ -131,14 +133,15 @@ def generate_answer(query_text, context_docs,section_list):
     with get_connection() as conn:
         for email in email_group_content_dict:
             sql_data=db_utils.get_data_by_email(conn,email)
-            result=f"""
-            This is the cv of {sql_data[0]["general"]["name"]}
-            # Personal information
-             Name: {sql_data[0]["general"]["name"]}
-             Email: {sql_data[0]["general"]["email"]}
-            """
+            result = (
+                f"\t=== CANDIDATE START ===\n"
+                f"\t# This is the cv of {sql_data[0]['general']['name']}\n"
+                f"\t## Personal information\n"
+                f"\tName: {sql_data[0]['general']['name']}\n"
+                f"\tEmail: {sql_data[0]['general']['email']}\n"
+            )
             for doc in email_group_content_dict[email]:
-                result+=f"\n\n# {doc.metadata.get("section", "contents")}\n\n{doc.page_content}"
+                result += f"\n\n\t## {doc.metadata.get('section', 'contents')}\n\n\t{doc.page_content}"
             context_index_dict[len(email_group_content_dict[email])].append(result)
             # context_list.append(result)
         for keys in context_index_dict:
@@ -150,10 +153,12 @@ def generate_answer(query_text, context_docs,section_list):
                     break
     
 
-    context_text = "\n\n---\n\n".join(context_list)
-
+    context_text = "\n\n=== CANDIDATE END ===\n\n".join(context_list)
+    context_text+="\n\n=== CANDIDATE END ===\n\n"
    
-    
+    if MODEL_NAME=="gemini":
+        content=get_data_using_gemini(query_text,PROMPT_TEMPLATE,context_text,is_json=False)
+        return  content,context_text
     template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
     prompt = template.format(context=context_text, question=query_text)
     
@@ -167,7 +172,7 @@ def generate_answer(query_text, context_docs,section_list):
         f.write(f"Context: {context_text}\n")
         f.write(f"Answer: {content}\n")
     
-    return content
+    return content,context_text
 
 
 def get_section_using_llm(question):
@@ -185,7 +190,7 @@ def get_section_using_llm(question):
     - interests : sports, hobbies, extracurricular activities
     - languages : languages known
     - general : general information like name,email,phone,place and other personal information
-
+    - summary : summary should be from  all sections. skills, experience, education, projects, certifications, interests, languages, general
     
 
     Rules:
@@ -207,6 +212,9 @@ def get_section_using_llm(question):
 
     before answering check this question do this question needs sections skills,experience,interest,projects,education,general information.
     """
+    if MODEL_NAME=="gemini":
+        res_dict=get_data_using_gemini(question,TEMPLATE,"")
+        return  res_dict
     prompt = ChatPromptTemplate.from_template(TEMPLATE)
     model = ChatOllama(model=MODEL_NAME, format="json")
     chain = prompt | model
@@ -265,7 +273,7 @@ def get_sql_using_llm(question,schema_text):
 
 def get_data_using_llm(question,TEMPLATE,context=""):
     prompt = ChatPromptTemplate.from_template(TEMPLATE)
-    model = ChatOllama(model=MODEL_NAME, format="json")
+    model = ChatOllama(model=MODEL_NAME, format="json",temperature=0.0)
     chain = prompt | model
     response = chain.invoke({"question": question,"context":context})
     content = response.content
@@ -274,6 +282,26 @@ def get_data_using_llm(question,TEMPLATE,context=""):
         json_data = json.loads(cleaned_content)
         print(json_data)
         return json_data
+    except json.JSONDecodeError as e:
+        print(f"Failed to decode JSON {e}")
+        return None
+
+def get_data_using_gemini(question,TEMPLATE,context="",**args):
+    is_json=args.get("is_json",True)
+    prompt = ChatPromptTemplate.from_template(TEMPLATE)
+    formatted_prompt = prompt.format(question=question,context=context)
+    content = get_gemini_json_response(formatted_prompt) if is_json else get_gemini_response(formatted_prompt)
+    
+    if not content:
+        return None
+
+    cleaned_content = content.strip()
+    try:
+        if is_json:
+            json_data = json.loads(cleaned_content)
+            print(json_data)
+            return json_data
+        return cleaned_content
     except json.JSONDecodeError as e:
         print(f"Failed to decode JSON {e}")
         return None
@@ -310,6 +338,7 @@ def polish_question(question):
     SELF-REFERENCE RULE:
     - If the question contains first-person references (I, me, my, myself), return "not related".
     - If the question contains a third-person name, treat it as a candidate query.
+    - if the user is asking  hi,hello,how are you, what are you doing, where are you, etc return "not related"
     ENTITY EXTRACTION RULE:
     - If a person name is present, extract it into the "names" list.
     - If a person email is present, extract it into the "emails" list.
@@ -320,33 +349,99 @@ def polish_question(question):
     - Keep the same scope.
     - Do NOT generalize.
     - Do NOT pluralize.
+    - Who,what, where, when, why, how are not names 
     Example:
-    Input: "is athul interested in sports"
+    Input: "is steve interested in sports"
     Output:
     {{
-        "polished_question": "Is Amal interested in sports?",
-        "names": ["Amal"],
+        "polished_question": "Is steve interested in sports?",
+        "names": ["steve"],
         "emails": [],
-        "short_description": "Check whether Amal has sports or hobby interests."
+        "short_description": "Check whether steve has sports or hobby interests."
+        "intents": ["sports","hobby"]
     }}
-        Example:
-    Input: "is athul@gmail.com interested in sports"
+    Example:
+    Input: "is steve and jhonson interested in sports"
     Output:
     {{
-        "polished_question": "Is athul@gmail.com interested in sports?",
+        "polished_question": "Is steve and jhonson interested in sports?",
+        "names": ["steve","jhonson"],
+        "emails": [],
+        "short_description": "Check whether steve and jhonson has sports or hobby interests."
+        "intents": ["sports","hobby"]
+    }}
+    Example:
+    Input: "is steve@gmail.com interested in sports"
+    Output:
+    {{
+        "polished_question": "Is steve@gmail.com interested in sports?",
         "names": [],
-        "emails": ["athul@gmail.com"],
-        "short_description": "Check whether athul@gmail.com has sports or hobby interests."
+        "emails": ["steve@gmail.com"],
+        "short_description": "Check whether steve@gmail.com has sports or hobby interests."
+        "intents": ["sports","hobby"]
+    }}
+    Example:
+    Input: "hi steve@gmail.com"
+    Output:
+    {{
+        "polished_question": "not related" // if not related to the context
+        "names": [],
+        "emails": [],
+        "short_description": "not related, it is a greeting",
+        "intents": []
     }}
     Before responding, verify:
+    - Is the question related to the context?. Or just a general question.
+    - if general question return "not related"
+    - Determine if the user is responding with a greeting.
+    - if greeting return "not related"
     - The subject of the polished question matches the original subject.
     - If not, correct it.
     ##input question:
     {question}
     """
-    result=get_data_using_llm(question,TEMPLATE,"")
-    print(result)
-    return result
+    # question_dict=get_data_using_llm(question,TEMPLATE,"")
+    if MODEL_NAME=="gemini":
+        question_dict=get_data_using_gemini(question,TEMPLATE,"")
+    else:
+        question_dict=get_data_using_llm(question,TEMPLATE,"")
+    names=question_dict["names"]
+    emails=question_dict["emails"]
+    polished_question=question_dict["polished_question"]
+    # check the names and emails are present in the question
+    # by seracrhing it
+    names= [name for name in names if name in question]
+    emails= [email for email in emails if email in question]
+
+    question_dict["names"]=names
+    question_dict["emails"]=emails
+    
+
+
+    return question_dict
+
+
+
+# Example usage:
+# formatted_prompt = RECRUITER_PROMPT_TEMPLATE.format(
+#     context="Candidate: John Doe, Email: john@example.com", 
+#     query="Give me John's email"
+# )
+    question_dict=get_data_using_llm(question,RECRUITER_PROMPT_TEMPLATE,"")
+    names=question_dict["names"]
+    emails=question_dict["emails"]
+    polished_question=question_dict["polished_question"]
+    # check the names and emails are present in the question
+    # by seracrhing it
+    # names= [name for name in names if name in question]
+    # emails= [email for email in emails if email in question]
+
+    # question_dict["names"]=names
+    # question_dict["emails"]=emails
+    # short_description = question_dict.get("short_description", "").lower()
+
+
+    return question_dict
 
 if __name__ == "__main__":
     pass

@@ -398,3 +398,111 @@ def read_db_by_sql(conn, sql, params=None):
         return None
         
     return read_records(conn, sql, params)
+
+def create_qa_tables(conn):
+    """
+    Create tables for questions and logs.
+    """
+    questions_sql = """
+    CREATE TABLE IF NOT EXISTS questions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question TEXT NOT NULL,
+        answer TEXT,
+        context TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    """
+    
+    # Try to add context column if it doesn't exist (simplistic migration)
+    try:
+        c = conn.cursor()
+        c.execute("ALTER TABLE questions ADD COLUMN context TEXT")
+    except Exception:
+        pass # Column likely exists
+    
+    logs_sql = """
+    CREATE TABLE IF NOT EXISTS logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question_id INTEGER,
+        log_entry TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (question_id) REFERENCES questions (id)
+    );
+    """
+    
+    create_table(conn, questions_sql)
+    create_table(conn, logs_sql)
+
+def save_qa_log(conn, question, answer, logs, context=None):
+    """
+    Save question, answer, context and logs.
+    
+    :param conn: Connection object
+    :param question: The question text
+    :param answer: The answer text
+    :param logs: The log string
+    :param context: The context string (optional)
+    :return: The ID of the saved question
+    """
+    try:
+        q_sql = "INSERT INTO questions (question, answer, context) VALUES (?, ?, ?)"
+        q_id = create_record(conn, q_sql, (question, answer, context))
+        
+        if q_id:
+            l_sql = "INSERT INTO logs (question_id, log_entry) VALUES (?, ?)"
+            create_record(conn, l_sql, (q_id, logs))
+            logging.info(f"Saved QA and logs for question ID: {q_id}")
+            return q_id
+    except Error as e:
+        logging.error(f"Error saving QA logs: {e}")
+        return None
+
+def get_qa_history(conn):
+    """
+    Get the history of asked questions.
+    
+    :param conn: Connection object
+    :return: List of dicts with id, question, timestamp
+    """
+    sql = "SELECT id, question, timestamp FROM questions ORDER BY timestamp DESC"
+    rows = read_records(conn, sql)
+    
+    history = []
+    for row in rows:
+        history.append({
+            "id": row[0],
+            "question": row[1],
+            "timestamp": row[2]
+        })
+    return history
+
+def get_qa_details(conn, question_id):
+    """
+    Get details (question, answer, logs) for a specific question ID.
+    
+    :param conn: Connection object
+    :param question_id: ID of the question
+    :return: Dict with details or None
+    """
+    q_sql = "SELECT id, question, answer, context, timestamp FROM questions WHERE id = ?"
+    q_rows = read_records(conn, q_sql, (question_id,))
+    
+    if not q_rows:
+        return None
+        
+    l_sql = "SELECT log_entry FROM logs WHERE question_id = ?"
+    l_rows = read_records(conn, l_sql, (question_id,))
+    
+    logs = ""
+    if l_rows:
+        # Concatenate all log entries
+        logs = "\n".join([row[0] for row in l_rows])
+        
+    return {
+        "id": q_rows[0][0],
+        "question": q_rows[0][1],
+        "answer": q_rows[0][2],
+        "context": q_rows[0][3],
+        "timestamp": q_rows[0][4],
+        "logs": logs
+    }
